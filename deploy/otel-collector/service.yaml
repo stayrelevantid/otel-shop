@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: otel-shop
+spec:
+  type: NodePort
+  selector:
+    app: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 14317
+      targetPort: 14317
+      nodePort: 14317
+    - name: otlp-http
+      port: 14318
+      targetPort: 14318
+      nodePort: 14318

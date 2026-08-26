@@ -1,0 +1,12 @@
+-- OTel-Shop Lab — schema & seed data (PRD §11)
+CREATE TABLE IF NOT EXISTS products (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    stock INT NOT NULL
+);
+
+INSERT INTO products (id, name, stock) VALUES
+('A123', 'Keyboard', 10),
+('B123', 'Mouse',    20),
+('C123', 'Monitor',   5)
+ON CONFLICT (id) DO NOTHING;
