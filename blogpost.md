@@ -16,8 +16,8 @@ http://stayrelevant.id/blog/day-1-otel-shop-setting-up-k3d-jaeger-postgres
 ### Excerpt (Meta Description)
 Day 1 of building OTel-Shop from scratch: k3d cluster up, Postgres seeded, OTel Collector and Jaeger running, and the first trace made it through.
 
-### Tag
-post
+### Tags
+otel-shop, golang, open-telemetry, distributed-tracing, observability, kubernetes, k3d, jaeger, postgresql, microservices, devops, cloud-native
 
 ### Cover Image Prompt
 Flat vector illustration, wide 16:9 tech blog cover banner, a laptop on a desk showing a tracing waterfall UI with colorful horizontal bars, above the laptop float three connected rounded containers each with a small symbol (shopping cart, database cylinder, bank card) linked by glowing lines flowing right into a pipeline funnel icon, clean minimal style, dark navy background with teal and orange accent colors, subtle isometric grid faded in the background suggesting Kubernetes, no text, crisp smooth shapes, JPG output compressed under 100KB.
@@ -88,7 +88,7 @@ Tomorrow I'm coding the three services. Wanna follow along? Blog post is here ðŸ
 Blog: http://stayrelevant.id/blog/day-1-otel-shop-setting-up-k3d-jaeger-postgres
 Repo: https://github.com/stayrelevantid/otel-shop
 
-#OpenTelemetry #Golang #Kubernetes #Observability #DevOps
+#OpenTelemetry #Golang #Kubernetes #Observability #DevOps #DistributedTracing #Jaeger #PostgreSQL #Microservices #CloudNative
 
 ---
 
@@ -107,4 +107,4 @@ Isometric hero illustration for portfolio project card, three connected service 
 End-to-end Golang microservices + OpenTelemetry lab: three small services (Order, Inventory, Payment) deployed on k3d Kubernetes, with every trace flowing through the OpenTelemetry Collector and visualized in Jaeger. Learning focus: distributed tracing, context propagation, baggage, all the way to root cause analysis of a distributed transaction.
 
 ### Tags
-golang, opentelemetry, kubernetes, observability
+golang, opentelemetry, distributed-tracing, observability, kubernetes, k3d, jaeger, postgresql, microservices, devops, cloud-native
