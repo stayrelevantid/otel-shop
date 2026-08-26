@@ -1,0 +1,25 @@
+# Go build & test artifacts
+bin/
+dist/
+*.test
+*.out
+coverage.html
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# macOS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Reports & logs
+gitleaks-report.*
+*.log
+
+# Local cluster/kube artifacts
+kubeconfig-*
+tmp/
