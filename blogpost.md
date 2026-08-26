@@ -5,13 +5,13 @@
 ## Section 1 — Blog Post
 
 ### Post Title
-Day 1 OTel-Shop: Naikin Infra k3d, Jaeger & Postgres
+Day 1 OTel-Shop: Setting Up k3d, Jaeger & Postgres
 
 ### Slug
-day-1-otel-shop-naikin-infra-k3d-jaeger-postgres
+day-1-otel-shop-setting-up-k3d-jaeger-postgres
 
 ### URL
-http://stayrelevant.id/blog/day-1-otel-shop-naikin-infra-k3d-jaeger-postgres
+http://stayrelevant.id/blog/day-1-otel-shop-setting-up-k3d-jaeger-postgres
 
 ### Excerpt (Meta Description)
 Day 1 of building OTel-Shop from scratch: k3d cluster up, Postgres seeded, OTel Collector and Jaeger running, and the first trace made it through.
@@ -85,7 +85,7 @@ Small drama: k3d insists on Docker while I was all-in on Podman, plus painfully 
 
 Tomorrow I'm coding the three services. Wanna follow along? Blog post is here 👇
 
-Blog: http://stayrelevant.id/blog/day-1-otel-shop-naikin-infra-k3d-jaeger-postgres
+Blog: http://stayrelevant.id/blog/day-1-otel-shop-setting-up-k3d-jaeger-postgres
 Repo: https://github.com/stayrelevantid/otel-shop
 
 #OpenTelemetry #Golang #Kubernetes #Observability #DevOps
@@ -104,7 +104,7 @@ otel-shop-lab
 Isometric hero illustration for portfolio project card, three connected service blocks (labeled visually with a cart icon, a database cylinder, and a bank card) sitting side by side, glowing neon arrows flowing from the three blocks into a pipeline funnel on the right that ends at a monitor screen showing a tracing waterfall chart with teal and orange bars, dark navy background, subtle grid floor, soft lighting, cinematic depth, clean modern tech aesthetic, no readable text, 16:9, JPG under 100KB.
 
 ### Description
-Lab microservices Golang + OpenTelemetry end-to-end: tiga service kecil (Order, Inventory, Payment) di-deploy ke k3d Kubernetes, semua trace melewati OpenTelemetry Collector dan divisualisasikan di Jaeger. Fokus pembelajaran: distributed tracing, context propagation, baggage, hingga analisis root cause dari sebuah transaksi terdistribusi.
+End-to-end Golang microservices + OpenTelemetry lab: three small services (Order, Inventory, Payment) deployed on k3d Kubernetes, with every trace flowing through the OpenTelemetry Collector and visualized in Jaeger. Learning focus: distributed tracing, context propagation, baggage, all the way to root cause analysis of a distributed transaction.
 
 ### Tags
 golang, opentelemetry, kubernetes, observability
