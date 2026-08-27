@@ -1,71 +1,73 @@
-# blogpost.md — Day 1
+# blogpost.md — Day 2
 
 ---
 
 ## Section 1 — Blog Post
 
 ### Post Title
-Day 1 OTel-Shop: Setting Up k3d, Jaeger & Postgres
+Day 2 OTel-Shop: Shipping Three Go Services to k3d
 
 ### Slug
-day-1-otel-shop-setting-up-k3d-jaeger-postgres
+day-2-otel-shop-shipping-three-go-services-to-k3d
 
 ### URL
-http://stayrelevant.id/blog/day-1-otel-shop-setting-up-k3d-jaeger-postgres
+http://stayrelevant.id/blog/day-2-otel-shop-shipping-three-go-services-to-k3d
 
 ### Excerpt (Meta Description)
-Day 1 of building OTel-Shop from scratch: k3d cluster up, Postgres seeded, OTel Collector and Jaeger running, and the first trace made it through.
+Day 2 of OTel-Shop: three Go services got real handlers and routes, packed into lean containers, and landed on the local k3d cluster. All green.
 
 ### Tags
 otel-shop, golang, open-telemetry, distributed-tracing, observability, kubernetes, k3d, jaeger, postgresql, microservices, devops, cloud-native
 
 ### Cover Image Prompt
-Flat vector illustration, wide 16:9 tech blog cover banner, a laptop on a desk showing a tracing waterfall UI with colorful horizontal bars, above the laptop float three connected rounded containers each with a small symbol (shopping cart, database cylinder, bank card) linked by glowing lines flowing right into a pipeline funnel icon, clean minimal style, dark navy background with teal and orange accent colors, subtle isometric grid faded in the background suggesting Kubernetes, no text, crisp smooth shapes, JPG output compressed under 100KB.
+Flat vector illustration, wide 16:9 tech blog cover banner, three rounded cargo containers resting on a dock, each decorated with a small icon (shopping cart, database cylinder, bank card), a friendly crane lifting one container onto a platform shaped like a ship steering wheel, a small monitor nearby showing three green progress bars, clean minimal style, dark navy background with teal and orange accent colors, subtle isometric grid faded in the background suggesting Kubernetes, no text, crisp smooth shapes, JPG output compressed under 100KB.
 
 ### Content
 
-## Why I Started This Series
+## Where We Left Off
 
-So here's the thing. I really wanted to genuinely understand OpenTelemetry and distributed tracing. Not just skim docs and go "yeah, got it," but actually build something end to end. That's how this challenge, OTel-Shop, was born: a small microservices lab in Go where all traffic gets visualized in Jaeger. Fun, right?
+Yesterday was all about foundations: the cluster came up, the database got seeded, and a fake trace made it all the way to Jaeger. Nice view, empty rooms. Day 2's mission was simple to say out loud: put actual services inside that beautiful infrastructure.
 
-Today (Day 1) wasn't about features, it was about foundations. My rule: if the base is solid, everything after is just stacking bricks. So most of the day went into setting up the lab infrastructure.
+## What Got Built Today
 
-## What I Got Done Today
+Here's the haul:
 
-Quick recap so I don't ramble:
+- Gave all three services their shapes and starter brains — models for checkout, inventory lookup, and payment, each wired into clean routes.
+- Kept the front door consistent: every service answers `/health`, which doubles as Kubernetes' way of asking "you good?" (readiness and liveness probes are hooked up to it).
+- Wrote multi-stage container recipes: a chunky builder stage does the compiling, then the final image starts from literally nothing and carries one small binary. Lean is lovely.
+- Rolled the whole packaging flow into a single script: build with Podman, hand over to Docker, import into the cluster. One command instead of a ritual.
+- Added deployment and service manifests so each app gets its own address inside the cluster, plus fixed door numbers on my laptop to reach them from outside.
+- Finished the day poking everything with curl like an impatient customer. Everything answered politely.
 
-- Initialized the repo from scratch with a `.gitignore` and ran a gitleaks scan so no secrets sneak in.
-- Set up a Go workspace with 4 modules: order, inventory, payment, and telemetry.
-- Wrote Kubernetes manifests for PostgreSQL, OpenTelemetry Collector, and Jaeger.
-- Brought up a local k3d cluster. All three core components came up: database, collector, and Jaeger UI.
-- Sent a tiny fake trace and watched it show up in Jaeger. The pipeline was proven end to end from day one, not just on paper.
+A taste of what worked straight from the host:
 
-The most satisfying part wasn't things running smoothly — it was sending that tiny little trace and seeing it land in Jaeger. That's the "oh, so this is observability" moment.
+- A checkout request returned a shiny new order id with status `paid`.
+- Asking about product A123 reported ten units in stock.
+- A payment call happily declared success.
+- Sloppy requests (empty fields, negative numbers) got polite 400 rejections instead of mystery errors.
 
-## The Drama Along the Way
+One honest note: the smarts are intentionally shallow right now. Inventory isn't really reading the database yet, and checkout doesn't call its friends. Those are the next episodes.
 
-Don't imagine everything was smooth — that's where the real value was.
+## The Container Shuffle
 
-First, k3d (the tool that creates local Kubernetes clusters) refuses to use Podman. It wants Docker, period. My machine was all-in on Podman. Brief drama, then Docker Desktop got switched on. Lesson: check what container runtime your tools actually support before you get excited about deploying.
+The day's plot twist happened at the handover between tools. Podman built the images perfectly, but when they crossed into the Docker side they picked up an extra `localhost/` prefix on their names. The cluster import step then looked at those names, shrugged, and refused everything.
 
-Second, image downloads were painfully slow. One took nine minutes. My deploy script even timed out on it. Exhausting? Yes. But it reinforced why you pin image versions — so you're not silently pulling whatever "latest" is and wondering why behavior changed.
-
-Third, a small classic error: `go build ./...` from the repo root. Turns out with a multi-module workspace that command doesn't work at the root. Fix: build per module. Small thing, but it made me understand the workspace structure better.
+Five minutes of head-scratching later, the fix was one extra retag step in the script. Classic. The lesson generalizes nicely though: when two tools meet at a boundary, naming conventions are where things go sideways — not the actual work.
 
 ## Lessons Learned
 
-Quick takeaway, four things:
+Four takeaways from today:
 
-- **Check your toolchain before you start.** If I'd checked that k3d needs Docker first, I wouldn't have spent time fighting Podman.
-- **Pin every image version.** "Latest" is a silent commitment that makes your infra non-reproducible.
-- **Get one tiny "proof" early.** Seeing a trace land in Jaeger on Day 1 is far more motivating than waiting for every feature to finish.
-- **Neat infra is your future self's treat.** Tomorrow it's just deploying services, no cluster debugging first.
+- **Start-from-nothing images are underrated.** A runtime with zero extras has almost nothing that can rot, need patching, or surprise you at 2am.
+- **Automate the boring handoffs immediately.** The build-to-cluster chain only bit me once because it became a script right after — future me says thanks.
+- **Poke from the outside.** Testing through the public ports like a real client tells you what actually matters; testing only from inside would have felt deceptively fine.
+- **Health checks are cheap insurance.** Wiring probes took minutes and already keeps rollouts honest — a pod only counts as ready when it truly answers.
 
 ## Conclusion
 
-Day 1 wrapped in a good place: cluster up, database seeded, collector running, and Jaeger already receiving its first trace. Tired, but relieved — the fiddliest foundation is done.
+Day 2 ends with three services running in the cluster, every endpoint answering correctly from my laptop, and the whole ship-and-deploy loop scripted. The foundation phase is officially behind us; from here on it's behavior, wiring, and telemetry.
 
-Tomorrow, the real services: the checkout flow, stock check, and payment. Hopefully less drama than today.
+Tomorrow the services start talking — first inventory meets the database for real, then checkout learns to orchestrate its neighbors. See you there.
 
 Repo is here: https://github.com/stayrelevantid/otel-shop
 
@@ -74,18 +76,19 @@ Repo is here: https://github.com/stayrelevantid/otel-shop
 ## Section 2 — LinkedIn Post
 
 **Hook**
-Day 1 of the OTel-Shop challenge: building an observability stack from zero 🚀
+Day 2 of the OTel-Shop challenge: three Go services are officially alive inside my local Kubernetes cluster 🚀
 
 **Today's wins:**
-• Local k3d cluster is up — PostgreSQL seeded, OTel Collector running
-• Jaeger UI is live, and the first trace made it through the full pipeline
-• Repo started properly: .gitignore + gitleaks scan so no secrets slip in
+• Real handlers, routes and models for Order, Inventory & Payment — plain stdlib, no frameworks
+• Multi-stage builds: hefty compile stage, featherweight final image
+• One-command pipeline: Podman build → Docker load → import to k3d → deploy
+• Every endpoint tested green with classic curl, including graceful 400s on bad input
 
-Small drama: k3d insists on Docker while I was all-in on Podman, plus painfully slow image pulls. Valuable lessons though: always pin image versions and check your toolchain first 🙃
+Small drama: images crossing from Podman to Docker picked up a `localhost/` name prefix and the cluster import wanted none of it. One retag later, peace restored 🙃
 
-Tomorrow I'm coding the three services. Wanna follow along? Blog post is here 👇
+Next up: hooking inventory to PostgreSQL for real, then making checkout call its friends.
 
-Blog: http://stayrelevant.id/blog/day-1-otel-shop-setting-up-k3d-jaeger-postgres
+Blog: http://stayrelevant.id/blog/day-2-otel-shop-shipping-three-go-services-to-k3d
 Repo: https://github.com/stayrelevantid/otel-shop
 
 #OpenTelemetry #Golang #Kubernetes #Observability #DevOps #DistributedTracing #Jaeger #PostgreSQL #Microservices #CloudNative
