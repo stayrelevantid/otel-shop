@@ -11,7 +11,7 @@ Mengacu pada `implementation_plan.md` (v2). Update setelah setiap fase selesai.
 | Fase | Scope | Status | Tanggal | Catatan |
 |------|-------|--------|---------|---------|
 | F1 | Foundation & Infrastructure Config | ✅ Done | 2026-08-26 | Scaffolding Go workspace (4 module), manifests K8s (postgres/collector/jaeger), cluster k3d hidup, trace smoke lolos |
-| F2 | Application Skeleton (3 services) | 🟡 Partial | 2026-08-26 | Baru stub `/health` per service (verify compile+vet). Handler, model, routing, Dockerfile belum |
+| F2 | Application Skeleton (3 services) | ✅ Done | 2026-08-27 | Model+handler+routing lengkap, Dockerfile multi-stage, deploy ke k3d, semua endpoint tervalidasi via curl dari host |
 | F3 | Database Integration (Inventory ↔ PostgreSQL) | ⏳ Pending | — | Interface `StockStore`, pgx open, product store |
 | F4 | Service Integration (Order → Inventory + Payment) | ⏳ Pending | — | Client interfaces + full checkout flow |
 | F5 | Chaos Engineering (Payment) | ⏳ Pending | — | Delay/error percent |
@@ -51,3 +51,21 @@ Legend: ✅ Done · 🟡 Partial · ⏳ Pending
 - `go build ./...` di root gagal karena multi-module → build per module dengan `-o /dev/null`
 
 **Next (Day 2):** F2 penuh — model, handler (`/checkout`, `/inventory/{id}`, `/pay`), routing, Dockerfile, deploy 3 service ke cluster.
+
+### Day 2 — 2026-08-27 (Application Skeleton + Deploy)
+
+**Tujuan:** 3 service naik ke k3d, semua endpoint dasar tervalidasi dari host.
+
+**Selesai:**
+- Model: `CheckoutRequest/Response/ErrorResponse`, `InventoryResponse`, `PayRequest/Response`
+- Handler + routing (Go 1.22+ ServeMux): `GET /health`, `POST /checkout`, `GET /inventory/{id}`, `POST /pay` (stub logic sesuai fase)
+- Dockerfile multi-stage x3 (golang:1.27-alpine → scratch, CGO off)
+- Manifest `deploy/{order,inventory,payment}` deployment+service NodePort 18080-18082 + probe `/health`
+- `scripts/build.sh`: podman build → docker load → k3d image import
+- `deploy.sh` diperluas: apply apps + rollout status per service
+- Semua pods Running; E2E curl hijau (200 checkout `{order_id,status:paid}`, inventory `{stock:10}`, pay `{status:success}`, 400 untuk invalid)
+
+**Kendala:**
+- podman save/load menambah prefix `localhost/` pada tag → perlu `docker tag` sebelum `k3d image import`
+
+**Next (Day 3):** F3 DB integration (`StockStore`, pgx) + F4 service integration (checkout flow antar-service).

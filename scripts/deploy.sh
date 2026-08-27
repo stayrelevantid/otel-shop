@@ -25,7 +25,7 @@ apply() {
 
 check_context
 
-# Urutan: namespace -> secret/config -> postgres -> jaeger -> collector
+# Urutan: namespace -> secret/config -> postgres -> jaeger -> collector -> services
 $KUBECTL apply -f deploy/namespace.yaml
 apply deploy/postgres/secret.yaml
 apply deploy/postgres/configmap.yaml
@@ -37,10 +37,23 @@ apply deploy/otel-collector/configmap.yaml
 apply deploy/otel-collector/deployment.yaml
 apply deploy/otel-collector/service.yaml
 
+echo "==> deploy service apps"
+for svc in order inventory payment; do
+  if [ -d "deploy/${svc}" ]; then
+    apply "deploy/${svc}/deployment.yaml"
+    apply "deploy/${svc}/service.yaml"
+  fi
+done
+
 echo "==> Menunggu pods ready..."
 $KUBECTL rollout status deploy/postgres -n "$NS" --timeout 120s
 $KUBECTL rollout status deploy/jaeger -n "$NS" --timeout 120s
 $KUBECTL rollout status deploy/otel-collector -n "$NS" --timeout 120s
+for svc in order-service inventory-service payment-service; do
+  if $KUBECTL get deploy "$svc" -n "$NS" >/dev/null 2>&1; then
+    $KUBECTL rollout status "deploy/${svc}" -n "$NS" --timeout 120s
+  fi
+done
 
 echo "==> Status:"
 $KUBECTL get pods,svc -n "$NS"

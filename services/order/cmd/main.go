@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+
+	"github.com/otel-shop/order/internal/handler"
 )
 
 func main() {
@@ -14,10 +16,8 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+	mux.HandleFunc("GET /health", handler.Health)
+	mux.HandleFunc("POST /checkout", handler.Checkout)
 
 	addr := ":" + port
 	log.Printf("order-service listening on %s", addr)

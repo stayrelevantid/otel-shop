@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: otel-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+    spec:
+      containers:
+        - name: payment
+          image: otel-shop/payment:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 18082
+              name: http
+          env:
+            - name: PORT
+              value: "18082"
+            - name: PAYMENT_DELAY_PERCENT
+              value: "20"
+            - name: PAYMENT_DELAY_MS
+              value: "2000"
+            - name: PAYMENT_ERROR_PERCENT
+              value: "10"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
