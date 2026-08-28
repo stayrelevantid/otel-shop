@@ -9,29 +9,47 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/otel-shop/order/internal/client"
 	"github.com/otel-shop/order/internal/model"
 )
 
-// Checkout handles POST /checkout. Day 2 stub: validate, generate
-// an order id, and respond as paid — no downstream calls yet.
-func Checkout(w http.ResponseWriter, r *http.Request) {
+// CheckoutHandler serves POST /checkout with injected downstream clients (F4).
+type CheckoutHandler struct {
+	Inv client.InventoryClient
+	Pay client.PaymentClient
+}
+
+// Checkout validates the request, checks stock, charges payment, and returns.
+func (h *CheckoutHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 	var req model.CheckoutRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "invalid request body"})
-		return
-	}
-	if req.ItemID == "" || req.Qty <= 0 {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ItemID == "" || req.Qty <= 0 {
 		respondJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "item_id is required and qty must be positive"})
 		return
 	}
 
-	orderID := newOrderID()
-	log.Printf("checkout: item=%s qty=%d order_id=%s", req.ItemID, req.Qty, orderID)
+	ctx := r.Context()
 
-	respondJSON(w, http.StatusOK, model.CheckoutResponse{
-		OrderID: orderID,
-		Status:  "paid",
-	})
+	stock, err := h.Inv.GetStock(ctx, req.ItemID)
+	if err != nil {
+		log.Printf("checkout: inventory error for %s: %v", req.ItemID, err)
+		respondJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "inventory failed"})
+		return
+	}
+	if stock < req.Qty {
+		log.Printf("checkout: insufficient stock %s have=%d want=%d", req.ItemID, stock, req.Qty)
+		respondJSON(w, http.StatusBadRequest, model.ErrorResponse{Error: "insufficient stock"})
+		return
+	}
+
+	orderID := newOrderID()
+	if err := h.Pay.Pay(ctx, model.PayRequest{OrderID: orderID, Amount: float64(req.Qty) * 10}); err != nil {
+		log.Printf("checkout: payment error for %s: %v", orderID, err)
+		respondJSON(w, http.StatusInternalServerError, model.ErrorResponse{Error: "payment failed"})
+		return
+	}
+
+	log.Printf("checkout: ok order_id=%s item=%s qty=%d", orderID, req.ItemID, req.Qty)
+	respondJSON(w, http.StatusOK, model.CheckoutResponse{OrderID: orderID, Status: "paid"})
 }
 
 func newOrderID() string {

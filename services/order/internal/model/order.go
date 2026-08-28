@@ -16,3 +16,14 @@ type CheckoutResponse struct {
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
+
+// PayRequest is sent by Order to the Payment service (PRD §8).
+type PayRequest struct {
+	OrderID string  `json:"order_id"`
+	Amount  float64 `json:"amount"`
+}
+
+// InventoryResponse mirrors the Inventory service response (PRD §9).
+type InventoryResponse struct {
+	Stock int `json:"stock"`
+}

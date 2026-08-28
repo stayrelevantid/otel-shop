@@ -80,3 +80,38 @@ Status fase: [progress-tracker.md](progress-tracker.md)
 - Tag image berubah jadi `localhost/otel-shop/...` setelah podman save/load → retag di sisi Docker sebelum `k3d image import`
 
 **Next:** F3 DB integration (`StockStore` + pgx) dan F4 checkout flow antar-service.
+
+---
+
+### Day 3 — 2026-08-28 (DB Integration + Checkout Flow + E2E)
+
+**Tujuan:** Inventory baca Postgres sungguhan, Order panggil Inventory & Payment via HTTP, alur checkout end-to-end jalan.
+
+**Selesai (F3):**
+- `internal/store/store.go`: interface `StockStore` + `ErrNotFound`
+- `internal/db/db.go`: `Open(DATABASE_URL)` via pgx/v5 stdlib pool + `PingContext`
+- `internal/db/product.go`: `GetStock(ctx,id)` + map `sql.ErrNoRows` → `ErrNotFound`
+- Handler inventory refactor: inject store, status 200/404/500
+- `main.go` inventory: buka DB, wire store, exit kalau `DATABASE_URL` kosong
+
+**Selesai (F4):**
+- `internal/client/interfaces.go`: `InventoryClient`, `PaymentClient` (interface, testable)
+- `internal/client/inventory.go`: GET `/inventory/{id}`, 404 → `ErrInventory`
+- `internal/client/payment.go`: POST `/pay`, non-200 → `ErrPayment`
+- `internal/model/errors.go`: typed errors (`ErrInventory`, `ErrPayment`, `ErrInsufficientStock`, `ErrValidation`)
+- `internal/handler/checkout.go`: `CheckoutHandler` method — validate → `GetStock` → cek stock → `Pay(qty*10)` → 200 `{order_id,status:paid}`
+- Downstream gagal → **500 + `{"error":"..."}`** (sesuai keputusan)
+- `main.go` order: env `INVENTORY_URL`/`PAYMENT_URL` (default localhost)
+
+**Selesai (test):**
+- `scripts/test.sh` (F12.4 dipercepat): health ×3 + inventory + 4 skenario checkout, exit non-zero bila gagal
+
+**Metrik/Verifikasi:**
+- Lokal E2E (port terpisah hindari tabrakan NodePort cluster): A123→paid, UNKNOWN→500 inventory failed, C123 qty999→400 insufficient, invalid→400
+- Build image → `k3d image import` → `rollout restart` order & inventory → E2E via NodePort host: sama persis hijau
+- `scripts/test.sh`: **9 passed, 0 failed**
+
+**Kendala & Solusi:**
+- Local test pertama salah karena port 18080/18081/18082 sudah dipakai NodePort cluster → test lokal pakai port lain; deploy verifikasi lewat NodePort cluster
+
+**Next:** F5 Chaos (payment delay/error percent) + F6 unit tests (mock client/store, coverage ≥70%).
