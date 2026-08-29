@@ -115,3 +115,31 @@ Status fase: [progress-tracker.md](progress-tracker.md)
 - Local test pertama salah karena port 18080/18081/18082 sudah dipakai NodePort cluster → test lokal pakai port lain; deploy verifikasi lewat NodePort cluster
 
 **Next:** F5 Chaos (payment delay/error percent) + F6 unit tests (mock client/store, coverage ≥70%).
+
+---
+
+### Day 4 — 2026-08-29 (Chaos Engineering + Unit Tests)
+
+**Tujuan:** Payment punya chaos (delay/error %), semua business logic ter-cover unit test ≥70%.
+
+**Selesai (F5):**
+- `internal/chaos/chaos.go`: `Config{DelayPercent,DelayMS,ErrorPercent}` dari env, `Apply(ctx)` deterministik saat 0/100%, thread-safe rng, respect `ctx.Done()`
+- Payment handler refactor: `Handler` struct, chaos dipanggil sebelum sukses → 500 `{status:failed}`
+- `payment/main.go`: `chaos.FromEnv()`
+
+**Selesai (F6):**
+- Order: `checkout_test.go` (mock `InventoryClient`+`PaymentClient`, 6 skenario) + `client_test.go` (httptest: inventory 200/404, payment valid/invalid/500)
+- Inventory: `inventory_test.go` (mock `StockStore`: exists/404/db error) + `product_test.go` (sqlmock: found/`ErrNoRows`→`ErrNotFound`/db error) + `TestOpen_BadEndpoint`
+- Payment: `chaos_test.go` (0/100% deterministik, delay timing, ctx cancel, `FromEnv`+fallback) + `payment_test.go` (sukses/chaos 500/invalid)
+- Dependency baru: `DATA-DOG/go-sqlmock` (inventory)
+
+**Metrik/Verifikasi:**
+- `go test ./...` hijau di 3 service
+- Coverage `./internal/...`: order client 82.1% / handler 90.9%, inventory db 90.0% / handler 82.6%, payment chaos 94.7% / handler 100% — **semua ≥70%** ✓
+- Build + import + rollout restart payment; `scripts/test.sh`: 9 passed, 0 failed
+- Chaos in-cluster: `PAYMENT_ERROR_PERCENT=100` → checkout `{"error":"payment failed"}`; revert 10% → `paid` ✓
+
+**Kendala & Solusi:**
+- Field duplikat `wantStatus` di struct test payment → rename `wantCode`/`wantBody`
+
+**Next:** F7 OTel SDK (`pkg/telemetry` init + sampling) → F8 HTTP instrumentation & context propagation.

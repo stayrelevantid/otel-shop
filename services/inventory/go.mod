@@ -2,7 +2,10 @@ module github.com/otel-shop/inventory
 
 go 1.27.0
 
-require github.com/jackc/pgx/v5 v5.7.5
+require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/jackc/pgx/v5 v5.7.5
+)
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
