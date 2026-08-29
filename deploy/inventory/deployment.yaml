@@ -25,6 +25,10 @@ spec:
               value: "18081"
             - name: DATABASE_URL
               value: postgres://otel:otel@postgres:5432/oteldb?sslmode=disable
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: otel-collector:14317
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "1.0"
           readinessProbe:
             httpGet:
               path: /health

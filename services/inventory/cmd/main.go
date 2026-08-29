@@ -8,8 +8,11 @@ import (
 	"os"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	inventorydb "github.com/otel-shop/inventory/internal/db"
 	"github.com/otel-shop/inventory/internal/handler"
+	"github.com/otel-shop/telemetry"
 )
 
 func main() {
@@ -23,6 +26,20 @@ func main() {
 		fmt.Fprintln(os.Stderr, "DATABASE_URL is required")
 		os.Exit(1)
 	}
+
+	tctx, tcancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer tcancel()
+
+	shutdown, err := telemetry.Init(tctx, "inventory-service", "1.0.0")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "telemetry init: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := shutdown(context.Background()); err != nil {
+			log.Printf("telemetry shutdown: %v", err)
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -44,7 +61,7 @@ func main() {
 
 	addr := ":" + port
 	log.Printf("inventory-service listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(addr, otelhttp.NewHandler(mux, "inventory-service")); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

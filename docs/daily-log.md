@@ -143,3 +143,36 @@ Status fase: [progress-tracker.md](progress-tracker.md)
 - Field duplikat `wantStatus` di struct test payment → rename `wantCode`/`wantBody`
 
 **Next:** F7 OTel SDK (`pkg/telemetry` init + sampling) → F8 HTTP instrumentation & context propagation.
+
+---
+
+### Day 5 — 2026-08-30 (OpenTelemetry SDK + HTTP Instrumentation)
+
+**Tujuan:** Trace terdistribusi pertama: satu trace ID lintas Order → Inventory → Payment di Jaeger.
+
+**Selesai (F7):**
+- `pkg/telemetry/telemetry.go`: `Init(ctx, name, version)` — Resource (service.name/version, deployment.environment.name=lab), OTLP gRPC exporter (`OTEL_EXPORTER_OTLP_ENDPOINT`, default `otel-collector:14317`, insecure), `ParentBased(TraceIDRatioBased)` dari `OTEL_TRACES_SAMPLER_ARG` (default 1.0), propagator composite `TraceContext+Baggage`, return `tp.Shutdown`
+- OTel deps (otel v1.46 line) di `pkg/telemetry` + wiring ke 3 service via `replace` directive di go.mod (bukan hanya go.work — penting untuk Docker build)
+- `telemetry.Init` + `defer shutdown` di ketiga `main.go`
+
+**Selesai (F8):**
+- `otelhttp.NewHandler(mux, "<service>")` sebagai server middleware di 3 service
+- `otelhttp.NewTransport(http.DefaultTransport)` di kedua order clients → propagasi `traceparent`+baggage otomatis
+- `r.Context()` sudah di-thread dari handler ke clients (Day 3)
+- Env `OTEL_EXPORTER_OTLP_ENDPOINT` + `OTEL_TRACES_SAMPLER_ARG` di 3 deployment manifests
+
+**Perubahan build:**
+- Dockerfile x3: build context pindah ke repo root (`COPY pkg/telemetry + services/<svc>`) karena `replace` butuh path relatif lintas folder
+- `scripts/build.sh`: `podman build -f services/<svc>/Dockerfile .` (context root)
+
+**Metrik/Verifikasi:**
+- build+vet+fmt OK 4 module; unit tests tetap hijau
+- Deploy + `scripts/test.sh`: 9 passed (2 flake awal = chaos 10% error ke-trigger, sesuai desain)
+- **Jaeger API: satu trace (`d87f3b8f...`) memuat 3 service** — spans: `POST /checkout` (order, 2079ms) → `GET /inventory/{id}` (15ms) + `POST /pay` (2014ms — chaos delay 20%×2s ke-trigger, terlihat di waterfall)
+- Propagasi W3C traceparent terbukti: 1 trace ID, 3 proses berbeda
+
+**Kendala & Solusi:**
+- `replace` directive lokal tidak jalan di Docker build context lama (per module) → Dockerfile build context di-root repo
+- Query Jaeger `limit=1` kena spam trace `/health` dari probe → filter `operation=POST /checkout`
+
+**Next:** F9 DB instrumentation (otelsql) → F10 manual spans (validate/check/process) → F11 attributes/events/baggage.

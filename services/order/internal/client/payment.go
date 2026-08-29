@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/otel-shop/order/internal/model"
 )
 
@@ -18,11 +20,15 @@ type PaymentHTTP struct {
 	HTTP    *http.Client
 }
 
-// NewPaymentClient builds a client for the Payment service.
+// NewPaymentClient builds a client for the Payment service. The transport
+// propagates trace context (traceparent + baggage) on every call (F8).
 func NewPaymentClient(baseURL string) *PaymentHTTP {
 	return &PaymentHTTP{
 		BaseURL: baseURL,
-		HTTP:    &http.Client{Timeout: 5 * time.Second},
+		HTTP: &http.Client{
+			Timeout:   5 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
 	}
 }
 

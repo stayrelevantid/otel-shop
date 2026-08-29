@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/otel-shop/order/internal/model"
 )
 
@@ -18,11 +20,15 @@ type InventoryHTTP struct {
 	HTTP    *http.Client
 }
 
-// NewInventoryClient builds a client for the Inventory service.
+// NewInventoryClient builds a client for the Inventory service. The transport
+// propagates trace context (traceparent + baggage) on every call (F8).
 func NewInventoryClient(baseURL string) *InventoryHTTP {
 	return &InventoryHTTP{
 		BaseURL: baseURL,
-		HTTP:    &http.Client{Timeout: 5 * time.Second},
+		HTTP: &http.Client{
+			Timeout:   5 * time.Second,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		},
 	}
 }
 

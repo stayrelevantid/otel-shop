@@ -11,8 +11,8 @@ SERVICES=(order inventory payment)
 if ! command -v podman >/dev/null 2>&1; then echo "ERROR: podman tidak ditemukan" >&2; exit 1; fi
 
 for svc in "${SERVICES[@]}"; do
-  echo "==> podman build otel-shop/${svc}:local"
-  podman build -t "otel-shop/${svc}:local" -f "services/${svc}/Dockerfile" "services/${svc}"
+  echo "==> podman build otel-shop/${svc}:local (context: repo root)"
+  podman build -t "otel-shop/${svc}:local" -f "services/${svc}/Dockerfile" .
 done
 
 echo "==> load images ke docker daemon (runtime k3d)"
