@@ -1,75 +1,78 @@
-# blogpost.md — Day 3
+# blogpost.md — Day 4
 
 ---
 
 ## Section 1 — Blog Post
 
 ### Post Title
-Day 3 OTel-Shop: Services Start Talking via HTTP
+Day 4 OTel-Shop: Chaos Injection and Real Unit Tests
 
 ### Slug
-day-3-otel-shop-services-start-talking-via-http
+day-4-otel-shop-chaos-injection-real-unit-tests
 
 ### URL
-http://stayrelevant.id/blog/day-3-otel-shop-services-start-talking-via-http
+http://stayrelevant.id/blog/day-4-otel-shop-chaos-injection-real-unit-tests
 
 ### Excerpt (Meta Description)
-Day 3 of OTel-Shop: inventory now reads real PostgreSQL, and checkout actually calls inventory and payment over HTTP. The full flow works end to end.
+Day 4 of OTel-Shop: payment learned to fail on purpose via configurable chaos, and the checkout flow got real unit tests above 70% coverage.
 
 ### Tags
 otel-shop, golang, open-telemetry, distributed-tracing, observability, kubernetes, k3d, jaeger, postgresql, microservices, devops, cloud-native
 
 ### Cover Image Prompt
-Flat vector illustration, wide 16:9 tech blog cover banner, three rounded service blocks (shopping cart, database cylinder, bank card) connected by glowing animated dotted lines that clearly show a conversation: the cart block calls the database block, which answers with a small "10" bubble, then the cart calls the bank card block which responds with a check mark, all orchestrated left to right, a small monitor at the edge showing a green success bar, clean minimal style, dark navy background with teal and orange accent colors, subtle isometric grid faded in the background suggesting Kubernetes, no text, crisp smooth shapes, JPG output compressed under 100KB.
+Flat vector illustration, wide 16:9 tech blog cover banner, a cartoon bank card service block standing in a light rain storm with small dice floating around it (one showing six dots, lightning bolt symbol overhead) while glowing teal arrows of requests still flow toward it from a shopping cart block, on the right side a neat row of test tubes filled with green liquid and a bar chart showing tall green coverage bars, clean minimal style, dark navy background with teal and orange accent colors, subtle isometric grid faded in the background suggesting Kubernetes, no text, crisp smooth shapes, JPG output compressed under 100KB.
 
 ### Content
 
 ## Where We Left Off
 
-The last two days gave us a cluster and three services that knew how to say "ok" on `/health` — but they didn't really talk. Inventory answered with a hardcoded number, and checkout never phoned anyone. Cute, but not a system. Day 3's job: make them actually communicate.
+Day 3 gave us a genuinely distributed checkout: order calls inventory, inventory reads PostgreSQL, payment gets charged. Everything green. But green-everywhere is exactly when you should get suspicious — the flow had never been seen failing, and not a single line of it was covered by a unit test. Day 4 fixed both.
 
-## What Got Wired Today
+## What Got Built Today
 
-Two chunks of work, and they finally click together.
+**Payment learned to fail on purpose.** A tiny chaos package now sits inside the payment service. It reads three knobs from the environment: how often to wait before answering (in percent), how long that wait is (in milliseconds), and how often to outright fail. The important design choice: at 0% or 100% the behavior is completely deterministic, so it's testable — randomness only lives in the middle range. It also respects the request context, so a cancelled request doesn't keep it napping.
 
-**Inventory meets the database.** Inventory now opens a real connection pool to PostgreSQL (pgx under the hood) and looks up stock by id. I hid the database behind a tiny `StockStore` interface so the handler doesn't care where the data lives — handy later for tests. Responses are honest now: found → 200 with the number, missing → 404, anything worse → 500.
+Then the fun part — flipping the switches in the real cluster:
 
-**Checkout learns to orchestrate.** Order grew two HTTP clients — one for inventory, one for payment — both behind interfaces so they can be faked in tests. The checkout handler now does a proper little dance:
-- Validate the request (no empty item, qty must be positive).
-- Ask inventory for stock.
-- Complain if there isn't enough.
-- Charge payment for `qty * 10` (price is a flat 10 per unit for now).
-- Only then return a fresh order id with status `paid`.
+- `PAYMENT_ERROR_PERCENT=100` → checkout honestly reports `payment failed` (500) ✅
+- Revert to the default 10% → checkout is `paid` again ✅
 
-When a neighbor fails, checkout stays honest instead of pretending: a downstream error becomes a 500 with a clear message like `inventory failed` or `payment failed`.
+No code change, no redeploy — just an environment variable. That's the whole point of chaos knobs.
 
-How it behaved end to end (straight from the host, through the cluster):
+**The whole flow got real tests.** Thanks to yesterday's interfaces, fakes were cheap to write:
 
-- `POST /checkout` for A123 ×1 → `{"order_id":"O-...","status":"paid"}` ✅
-- Unknown product → 500 `inventory failed` ✅
-- C123 ×999 (only 5 in stock) → 400 `insufficient stock` ✅
-- Garbage request → 400 ✅
+- Order's checkout tested with mock inventory and payment clients: success, bad input, inventory failure, payment failure, and insufficient stock — every branch.
+- Order's actual HTTP clients tested against a fake server (httptest), so the real request/response code is exercised too.
+- Inventory's handler tested with a fake store, and its database layer tested with sqlmock — including the "row not found" path — without ever touching PostgreSQL.
+- Payment's chaos behavior tested deterministically (always fails / never fails / delays actually delay / cancelled context bails out) plus the handler around it.
 
-And I finally added a proper `test.sh` that runs all nine of these checks and exits non-zero if anything breaks — so "does it still work?" is one command now, not a memory test.
+## The Coverage Table
 
-## The Gotcha
+The goal was 70% on every internal package. Actual numbers:
 
-First attempt at local testing looked green... but for the wrong reasons. My local services were trying to bind ports 18080–18082, which the cluster already occupies as NodePorts on my laptop. So my curl requests silently hit the old stub pods, not my new code. The fix: run local services on throwaway ports and point the order client at those. Silly, but it's exactly the kind of "it works on my machine because it's actually the cluster" trap worth internalizing.
+| Service | Package | Coverage |
+|---|---|---|
+| Order | handler | 90.9% |
+| Order | client | 82.1% |
+| Inventory | db | 90.0% |
+| Inventory | handler | 82.6% |
+| Payment | chaos | 94.7% |
+| Payment | handler | 100% |
+
+All comfortably above the bar — and every green `test.sh` run now has backup from 20+ unit tests.
 
 ## Lessons Learned
 
-Four things stuck this time:
-
-- **Hide infrastructure behind interfaces early.** The `StockStore` and client interfaces cost almost nothing today and are what make the flow testable tomorrow.
-- **A failed call is data, not a mystery.** Returning a clear `inventory failed` / `payment failed` turned a confusing 500 into something you can act on.
-- **Test like a real client, on real ports.** My port-clash slip proved that "it returned 200" means nothing if you're not sure which process answered.
-- **One script beats a checklist in your head.** `test.sh` replaced five manual curls and already caught me thinking I was done when I wasn't.
+- **Chaos only works if it's deterministic at the edges.** 0% and 100% must be promises, not probabilities — otherwise you can't test the chaos itself.
+- **Interfaces written "for later" pay off immediately.** Every mock in today's tests existed because of interfaces drawn on Day 3, before any test needed them.
+- **A coverage gate finds real gaps.** Watching the numbers forced proper client tests instead of stopping at handler-only coverage — the HTTP layer would have stayed untested otherwise.
+- **Keep the database out of unit tests.** sqlmock simulates the exact scenarios (rows, no-rows, dead connection) in milliseconds, with zero setup and zero flakes.
 
 ## Conclusion
 
-Day 3 closes with a checkout flow that's genuinely distributed: one request fans out to inventory and payment, talks to a real database, and reports honest results. The architecture finally earns the "microservices" label.
+Day 4 closes the quality-foundation chapter: the system can now be broken on demand, observed failing honestly, and every branch of the checkout flow is pinned down by tests. If tomorrow's changes regress something, the tests will say so before any human notices.
 
-Next: inject some chaos into payment (random delays and errors) and start writing real unit tests behind those interfaces. See you then.
+Next is the reason this whole lab exists: the OpenTelemetry SDK goes in, and the first real distributed traces appear in Jaeger. See you there.
 
 Repo is here: https://github.com/stayrelevantid/otel-shop
 
@@ -78,19 +81,19 @@ Repo is here: https://github.com/stayrelevantid/otel-shop
 ## Section 2 — LinkedIn Post
 
 **Hook**
-Day 3 of the OTel-Shop challenge: the services finally talk to each other 🔗
+Day 4 of the OTel-Shop challenge: taught payment how to fail on purpose — then tested it 🎲
 
 **Today's wins:**
-• Inventory reads real PostgreSQL via a pgx pool, behind a StockStore interface (200/404/500)
-• Order grew HTTP clients for inventory & payment, also behind interfaces — testable by design
-• Checkout now orchestrates: validate → stock check → charge qty×10 → 200 paid, with clear 500s on downstream failure
-• Added `test.sh`: 9 E2E checks, exits non-zero on any failure
+• Chaos in payment: delay % + error % from env vars, deterministic at 0/100 so it's testable
+• Flipped `PAYMENT_ERROR_PERCENT=100` in the cluster — checkout honestly reported `payment failed`, reverted, `paid` again. No code change, no redeploy
+• Real unit tests across all three services: mock clients (httptest), fake stores, sqlmock for the DB layer
+• Coverage gate ≥70% cleared: 82.1%–100% across six internal packages
 
-Small drama: my first local test looked green because it was secretly hitting the old cluster pods on the same NodePorts. Lesson re-learned: know exactly which process answered your request.
+Small drama: duplicate field names in a test struct — five minutes, fixed. Tests now guard every branch of checkout.
 
-Next: chaos engineering on payment (random delay + error) and proper unit tests behind those interfaces.
+Next: the OpenTelemetry SDK goes in and the first real distributed traces land in Jaeger 🔭
 
-Blog: http://stayrelevant.id/blog/day-3-otel-shop-services-start-talking-via-http
+Blog: http://stayrelevant.id/blog/day-4-otel-shop-chaos-injection-real-unit-tests
 Repo: https://github.com/stayrelevantid/otel-shop
 
 #OpenTelemetry #Golang #Kubernetes #Observability #DevOps #DistributedTracing #Jaeger #PostgreSQL #Microservices #CloudNative
