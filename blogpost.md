@@ -1,78 +1,78 @@
-# blogpost.md — Day 4
+# blogpost.md — Day 5
 
 ---
 
 ## Section 1 — Blog Post
 
 ### Post Title
-Day 4 OTel-Shop: Chaos Injection and Real Unit Tests
+Day 5 OTel-Shop: The First Distributed Trace in Jaeger
 
 ### Slug
-day-4-otel-shop-chaos-injection-real-unit-tests
+day-5-otel-shop-first-distributed-trace-in-jaeger
 
 ### URL
-http://stayrelevant.id/blog/day-4-otel-shop-chaos-injection-real-unit-tests
+http://stayrelevant.id/blog/day-5-otel-shop-first-distributed-trace-in-jaeger
 
 ### Excerpt (Meta Description)
-Day 4 of OTel-Shop: payment learned to fail on purpose via configurable chaos, and the checkout flow got real unit tests above 70% coverage.
+Day 5 of OTel-Shop: OpenTelemetry SDK integrated, every HTTP call instrumented, and the first full trace across all three services landed in Jaeger.
 
 ### Tags
 otel-shop, golang, open-telemetry, distributed-tracing, observability, kubernetes, k3d, jaeger, postgresql, microservices, devops, cloud-native
 
 ### Cover Image Prompt
-Flat vector illustration, wide 16:9 tech blog cover banner, a cartoon bank card service block standing in a light rain storm with small dice floating around it (one showing six dots, lightning bolt symbol overhead) while glowing teal arrows of requests still flow toward it from a shopping cart block, on the right side a neat row of test tubes filled with green liquid and a bar chart showing tall green coverage bars, clean minimal style, dark navy background with teal and orange accent colors, subtle isometric grid faded in the background suggesting Kubernetes, no text, crisp smooth shapes, JPG output compressed under 100KB.
+Flat vector illustration, wide 16:9 tech blog cover banner, three rounded service blocks (shopping cart, database cylinder, bank card) connected left to right by glowing teal dotted arrows, each arrow carrying a small glowing dot labeled visually with a shared ID badge symbol, the final arrow flows into a large monitor screen on the right showing a tracing waterfall chart with teal and orange horizontal bars of different widths, one bar noticeably stretched long, clean minimal style, dark navy background with teal and orange accent colors, subtle isometric grid faded in the background suggesting Kubernetes, no text, crisp smooth shapes, JPG output compressed under 100KB.
 
 ### Content
 
 ## Where We Left Off
 
-Day 3 gave us a genuinely distributed checkout: order calls inventory, inventory reads PostgreSQL, payment gets charged. Everything green. But green-everywhere is exactly when you should get suspicious — the flow had never been seen failing, and not a single line of it was covered by a unit test. Day 4 fixed both.
+After four days we had a cluster, three talking services, chaos knobs, and a test suite. Everything behaved — but we were flying blind. When checkout took two seconds, I had to guess where the time went. Day 5 is the reason this whole lab exists: wire in OpenTelemetry and finally see the request's full journey.
 
-## What Got Built Today
+## The Big Picture: One Shared SDK Setup
 
-**Payment learned to fail on purpose.** A tiny chaos package now sits inside the payment service. It reads three knobs from the environment: how often to wait before answering (in percent), how long that wait is (in milliseconds), and how often to outright fail. The important design choice: at 0% or 100% the behavior is completely deterministic, so it's testable — randomness only lives in the middle range. It also respects the request context, so a cancelled request doesn't keep it napping.
+The nice part: the entire SDK setup lives in one small shared package, `pkg/telemetry`, used by all three services. Its `Init` call does a handful of things:
 
-Then the fun part — flipping the switches in the real cluster:
+- Builds a **resource** — who am I? (service name, version, "this is a lab" tag). This is how Jaeger knows which service produced which span.
+- Creates an **OTLP exporter** that ships spans over gRPC to the collector, which forwards them to Jaeger.
+- Configures a **sampler** driven by an environment variable — keep 100% of traces for now, dial it down later with one env change.
+- Registers **propagators** (W3C Trace Context + Baggage) — the glue that lets a trace id hop from service to service inside HTTP headers.
 
-- `PAYMENT_ERROR_PERCENT=100` → checkout honestly reports `payment failed` (500) ✅
-- Revert to the default 10% → checkout is `paid` again ✅
+Each service calls `Init` at startup and defers the shutdown so pending spans get flushed before exit.
 
-No code change, no redeploy — just an environment variable. That's the whole point of chaos knobs.
+## Wiring HTTP Servers and Clients
 
-**The whole flow got real tests.** Thanks to yesterday's interfaces, fakes were cheap to write:
+The SDK alone doesn't produce anything — requests need to create spans and forward context. Two helpers do the heavy lifting:
 
-- Order's checkout tested with mock inventory and payment clients: success, bad input, inventory failure, payment failure, and insufficient stock — every branch.
-- Order's actual HTTP clients tested against a fake server (httptest), so the real request/response code is exercised too.
-- Inventory's handler tested with a fake store, and its database layer tested with sqlmock — including the "row not found" path — without ever touching PostgreSQL.
-- Payment's chaos behavior tested deterministically (always fails / never fails / delays actually delay / cancelled context bails out) plus the handler around it.
+- On the **server side**, every service wraps its router with `otelhttp`. One line per service; now every incoming HTTP request gets a span named after its route.
+- On the **client side**, the order service's HTTP clients got `otelhttp.NewTransport`. That transparently injects the `traceparent` header (and baggage) into every outgoing call.
 
-## The Coverage Table
+The silent hero underneath is `context.Context` — already threaded through the whole flow on Day 3. When order calls inventory with the request's context, the transport reads the active span from it and serializes the trace id into headers. No extra code, just plumbing done right.
 
-The goal was 70% on every internal package. Actual numbers:
+## The Moment of Truth
 
-| Service | Package | Coverage |
-|---|---|---|
-| Order | handler | 90.9% |
-| Order | client | 82.1% |
-| Inventory | db | 90.0% |
-| Inventory | handler | 82.6% |
-| Payment | chaos | 94.7% |
-| Payment | handler | 100% |
+One `POST /checkout` later, I asked Jaeger's API for the latest checkout trace — and there it was:
 
-All comfortably above the bar — and every green `test.sh` run now has backup from 20+ unit tests.
+```
+traceID: d87f3b8fcfa436b1e037007a31e7c868
+services: [inventory-service, order-service, payment-service]
+
+  order-service     POST /checkout         2079.5ms
+  inventory-service GET /inventory/{id}      15.0ms
+  payment-service   POST /pay              2014.3ms
+```
+
+One trace id, three different services. Order fan-outs to its two neighbors, and both children nest neatly under the parent span. Even better: this particular checkout got unlucky with the chaos dice — payment's 20% chance of a 2-second delay triggered, and you can see it instantly in the waterfall. That's the "why" of this whole lab in one screenshot: not "something is slow," but exactly which hop and how much.
 
 ## Lessons Learned
 
-- **Chaos only works if it's deterministic at the edges.** 0% and 100% must be promises, not probabilities — otherwise you can't test the chaos itself.
-- **Interfaces written "for later" pay off immediately.** Every mock in today's tests existed because of interfaces drawn on Day 3, before any test needed them.
-- **A coverage gate finds real gaps.** Watching the numbers forced proper client tests instead of stopping at handler-only coverage — the HTTP layer would have stayed untested otherwise.
-- **Keep the database out of unit tests.** sqlmock simulates the exact scenarios (rows, no-rows, dead connection) in milliseconds, with zero setup and zero flakes.
+- **One shared telemetry package beats copy-paste.** Three services, one `Init`, identical behavior — and a sampler change is a one-file edit.
+- **`context.Context` is the highway.** Tracing breaks wherever someone drops the context; threading it early on Day 3 paid off completely today.
+- **`otelhttp` is a cheat code.** One wrapper per server, one transport per client — production-grade spans and header propagation for near-zero effort.
+- **Verify through the API, not just the UI.** Querying Jaeger's API (filtered by operation!) made the proof concrete — and taught me that health-check probes flood traces, so filter wisely.
 
 ## Conclusion
 
-Day 4 closes the quality-foundation chapter: the system can now be broken on demand, observed failing honestly, and every branch of the checkout flow is pinned down by tests. If tomorrow's changes regress something, the tests will say so before any human notices.
-
-Next is the reason this whole lab exists: the OpenTelemetry SDK goes in, and the first real distributed traces appear in Jaeger. See you there.
+The core mission is done: a distributed trace now tells the truth about every checkout, end to end. From here, tracing gets richer — database spans, manual business spans (validate / check / process), attributes, events, and baggage riding along on the same context.
 
 Repo is here: https://github.com/stayrelevantid/otel-shop
 
@@ -81,19 +81,19 @@ Repo is here: https://github.com/stayrelevantid/otel-shop
 ## Section 2 — LinkedIn Post
 
 **Hook**
-Day 4 of the OTel-Shop challenge: taught payment how to fail on purpose — then tested it 🎲
+Day 5 of the OTel-Shop challenge: the moment of truth — our first end-to-end distributed trace just landed in Jaeger! 🔭
 
 **Today's wins:**
-• Chaos in payment: delay % + error % from env vars, deterministic at 0/100 so it's testable
-• Flipped `PAYMENT_ERROR_PERCENT=100` in the cluster — checkout honestly reported `payment failed`, reverted, `paid` again. No code change, no redeploy
-• Real unit tests across all three services: mock clients (httptest), fake stores, sqlmock for the DB layer
-• Coverage gate ≥70% cleared: 82.1%–100% across six internal packages
+• One shared `pkg/telemetry` package: OTLP exporter, env-driven sampler, W3C TraceContext + Baggage propagation
+• Every HTTP server wrapped with otelhttp, every outgoing client call instrumented via otelhttp transport
+• Single trace id spanning all three services: checkout → inventory → payment, children nested under the parent span
+• Bonus proof: payment's 20% chaos delay triggered — you can see the exact 2-second hop in the waterfall
 
-Small drama: duplicate field names in a test struct — five minutes, fixed. Tests now guard every branch of checkout.
+Silent hero: `context.Context` threaded everywhere since Day 3. Propagation "just worked".
 
-Next: the OpenTelemetry SDK goes in and the first real distributed traces land in Jaeger 🔭
+Next: database spans, manual business spans, attributes/events, and baggage.
 
-Blog: http://stayrelevant.id/blog/day-4-otel-shop-chaos-injection-real-unit-tests
+Blog: http://stayrelevant.id/blog/day-5-otel-shop-first-distributed-trace-in-jaeger
 Repo: https://github.com/stayrelevantid/otel-shop
 
 #OpenTelemetry #Golang #Kubernetes #Observability #DevOps #DistributedTracing #Jaeger #PostgreSQL #Microservices #CloudNative
