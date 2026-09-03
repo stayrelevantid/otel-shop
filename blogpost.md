@@ -1,78 +1,68 @@
-# blogpost.md — Day 5
+# blogpost.md — Day 6
 
 ---
 
 ## Section 1 — Blog Post
 
 ### Post Title
-Day 5 OTel-Shop: The First Distributed Trace in Jaeger
+Day 6 OTel-Shop: Traces That Tell the Whole Story
 
 ### Slug
-day-5-otel-shop-first-distributed-trace-in-jaeger
+day-6-otel-shop-traces-that-tell-the-whole-story
 
 ### URL
-http://stayrelevant.id/blog/day-5-otel-shop-first-distributed-trace-in-jaeger
+http://stayrelevant.id/blog/day-6-otel-shop-traces-that-tell-the-whole-story
 
 ### Excerpt (Meta Description)
-Day 5 of OTel-Shop: OpenTelemetry SDK integrated, every HTTP call instrumented, and the first full trace across all three services landed in Jaeger.
+Day 6 of OTel-Shop: database spans, manual business spans, rich attributes, payment events, and baggage carrying the order id across every service.
 
 ### Tags
 otel-shop, golang, open-telemetry, distributed-tracing, observability, kubernetes, k3d, jaeger, postgresql, microservices, devops, cloud-native
 
 ### Cover Image Prompt
-Flat vector illustration, wide 16:9 tech blog cover banner, three rounded service blocks (shopping cart, database cylinder, bank card) connected left to right by glowing teal dotted arrows, each arrow carrying a small glowing dot labeled visually with a shared ID badge symbol, the final arrow flows into a large monitor screen on the right showing a tracing waterfall chart with teal and orange horizontal bars of different widths, one bar noticeably stretched long, clean minimal style, dark navy background with teal and orange accent colors, subtle isometric grid faded in the background suggesting Kubernetes, no text, crisp smooth shapes, JPG output compressed under 100KB.
+Flat vector illustration, wide 16:9 tech blog cover banner, a large magnifying glass hovering over a monitor showing a tracing waterfall chart, but the bars under the glass reveal extra detail: tiny child bars branching off (a database cylinder symbol, three small step icons in a row) and floating label bubbles with a tag icon and a small id badge, a bank card block at the side emitting small confetti dots for events, clean minimal style, dark navy background with teal and orange accent colors, subtle isometric grid faded in the background suggesting Kubernetes, no text, crisp smooth shapes, JPG output compressed under 100KB.
 
 ### Content
 
 ## Where We Left Off
 
-After four days we had a cluster, three talking services, chaos knobs, and a test suite. Everything behaved — but we were flying blind. When checkout took two seconds, I had to guess where the time went. Day 5 is the reason this whole lab exists: wire in OpenTelemetry and finally see the request's full journey.
+Day 5 delivered the first distributed trace: one trace id spanning all three services. Amazing — but honest review time. Every span had a generic name, the waterfall showed "an HTTP call happened," and that was it. If a checkout were slow, the trace still couldn't say whether validation, the database, or payment was the culprit. The trace knew the route; it didn't know the story.
 
-## The Big Picture: One Shared SDK Setup
+## What Got Added Today
 
-The nice part: the entire SDK setup lives in one small shared package, `pkg/telemetry`, used by all three services. Its `Init` call does a handful of things:
+Three enrichment layers, all landing in the same waterfall.
 
-- Builds a **resource** — who am I? (service name, version, "this is a lab" tag). This is how Jaeger knows which service produced which span.
-- Creates an **OTLP exporter** that ships spans over gRPC to the collector, which forwards them to Jaeger.
-- Configures a **sampler** driven by an environment variable — keep 100% of traces for now, dial it down later with one env change.
-- Registers **propagators** (W3C Trace Context + Baggage) — the glue that lets a trace id hop from service to service inside HTTP headers.
+**The business story, as spans.** Checkout now explicitly starts three named spans around its steps: `validate-order`, `check-inventory`, and `process-payment`. Each carries its own attributes — item id and quantity on validation, product id and resulting stock on the inventory check, order id, amount, and final status on payment. Reading the waterfall top to bottom now reads like the checkout procedure itself.
 
-Each service calls `Init` at startup and defers the shutdown so pending spans get flushed before exit.
+**The database finally speaks.** Inventory's connection pool is now opened through `otelsql`, a drop-in wrapper for `database/sql`. Zero query changes — the same `SELECT stock FROM products WHERE id = $1` — yet every query emits spans: you can literally see `sql.conn.query` and `sql.rows` nested under the inventory request, with `db.system=postgresql` attached.
 
-## Wiring HTTP Servers and Clients
+**Metadata everywhere.**
+- The payment span now records events as they happen: `payment_started`, then `payment_completed` (or `payment_failed`). A timeline inside a span.
+- When chaos forces a failure, spans are marked with error status and the exception is recorded — the parent checkout span too, so the very first bar you see turns red.
+- And the small but delightful one: **baggage**. The order id is now created at the very start of checkout and attached to the request context. OpenTelemetry's propagators carry it inside HTTP headers automatically, and both inventory and payment read it back and stamp it onto their spans. One id, visible everywhere, zero extra HTTP calls.
 
-The SDK alone doesn't produce anything — requests need to create spans and forward context. Two helpers do the heavy lifting:
+## What It Looks Like
 
-- On the **server side**, every service wraps its router with `otelhttp`. One line per service; now every incoming HTTP request gets a span named after its route.
-- On the **client side**, the order service's HTTP clients got `otelhttp.NewTransport`. That transparently injects the `traceparent` header (and baggage) into every outgoing call.
+Real output from one checkout request:
 
-The silent hero underneath is `context.Context` — already threaded through the whole flow on Day 3. When order calls inventory with the request's context, the transport reads the active span from it and serializes the trace id into headers. No extra code, just plumbing done right.
+- Order: `POST /checkout` → `validate-order` → `check-inventory` → `process-payment`, each with its attributes.
+- Inventory: `GET /inventory/{id}` stamped with `baggage.order.id=O-a921116e` and `product.stock=10`, with the actual database query nested beneath it.
+- Payment: `POST /pay` with the same baggage id, `payment.amount`, status, and the two lifecycle events.
 
-## The Moment of Truth
-
-One `POST /checkout` later, I asked Jaeger's API for the latest checkout trace — and there it was:
-
-```
-traceID: d87f3b8fcfa436b1e037007a31e7c868
-services: [inventory-service, order-service, payment-service]
-
-  order-service     POST /checkout         2079.5ms
-  inventory-service GET /inventory/{id}      15.0ms
-  payment-service   POST /pay              2014.3ms
-```
-
-One trace id, three different services. Order fan-outs to its two neighbors, and both children nest neatly under the parent span. Even better: this particular checkout got unlucky with the chaos dice — payment's 20% chance of a 2-second delay triggered, and you can see it instantly in the waterfall. That's the "why" of this whole lab in one screenshot: not "something is slow," but exactly which hop and how much.
+And the failure path, verified by flipping the chaos knob to 100%: the payment span turns error-red with a `payment_failed` event, the order-side payment span and the parent checkout span light up red too. Failure propagates visibly up the whole chain — exactly what you want at 3am.
 
 ## Lessons Learned
 
-- **One shared telemetry package beats copy-paste.** Three services, one `Init`, identical behavior — and a sampler change is a one-file edit.
-- **`context.Context` is the highway.** Tracing breaks wherever someone drops the context; threading it early on Day 3 paid off completely today.
-- **`otelhttp` is a cheat code.** One wrapper per server, one transport per client — production-grade spans and header propagation for near-zero effort.
-- **Verify through the API, not just the UI.** Querying Jaeger's API (filtered by operation!) made the proof concrete — and taught me that health-check probes flood traces, so filter wisely.
+- **Auto-instrumentation gets you 80%; business spans get you meaning.** `otelsql` and `otelhttp` required almost no code, but only the hand-named spans (`check-inventory`) map to what the business actually does.
+- **Baggage is a write-once, read-everywhere channel.** Set a value once at the entry point, and every downstream service can read it — perfect for correlation ids like `order.id`. (It's not for bulk data, just small metadata.)
+- **Events make spans self-documenting.** A timeline of `payment_started` → `payment_failed` inside one span tells the story without needing a second trace.
+- **Fail loudly, at every level.** Marking the child span, the client call, and the parent checkout span as errors means nobody has to dig to notice a broken flow.
 
 ## Conclusion
 
-The core mission is done: a distributed trace now tells the truth about every checkout, end to end. From here, tracing gets richer — database spans, manual business spans (validate / check / process), attributes, events, and baggage riding along on the same context.
+With Day 6, the tracing story is complete: routes, business steps, database queries, attributes, events, and shared context all live in one waterfall. The lab now demonstrates the full OpenTelemetry surface that real production systems rely on.
+
+What's left is polish: a proper quality script with the coverage gate, integration tests, a chaos-test script, and the documentation that ties the whole experiment together.
 
 Repo is here: https://github.com/stayrelevantid/otel-shop
 
@@ -81,19 +71,19 @@ Repo is here: https://github.com/stayrelevantid/otel-shop
 ## Section 2 — LinkedIn Post
 
 **Hook**
-Day 5 of the OTel-Shop challenge: the moment of truth — our first end-to-end distributed trace just landed in Jaeger! 🔭
+Day 6 of the OTel-Shop challenge: our traces learned to tell the whole story 📖
 
 **Today's wins:**
-• One shared `pkg/telemetry` package: OTLP exporter, env-driven sampler, W3C TraceContext + Baggage propagation
-• Every HTTP server wrapped with otelhttp, every outgoing client call instrumented via otelhttp transport
-• Single trace id spanning all three services: checkout → inventory → payment, children nested under the parent span
-• Bonus proof: payment's 20% chaos delay triggered — you can see the exact 2-second hop in the waterfall
+• Manual business spans: `validate-order` → `check-inventory` → `process-payment`, each with its own attributes
+• Database spans via otelsql — the actual Postgres query now appears nested under the inventory request
+• Baggage: the order id is set once at checkout and read back by both downstream services, zero extra calls
+• Payment span events (`payment_started` → `payment_completed`) and loud error status when chaos strikes — parent span turns red too
 
-Silent hero: `context.Context` threaded everywhere since Day 3. Propagation "just worked".
+The waterfall now reads like the checkout procedure itself. One trace = the full story.
 
-Next: database spans, manual business spans, attributes/events, and baggage.
+Next: quality scripts (coverage gate + chaos test), integration tests, and documentation to wrap up the lab.
 
-Blog: http://stayrelevant.id/blog/day-5-otel-shop-first-distributed-trace-in-jaeger
+Blog: http://stayrelevant.id/blog/day-6-otel-shop-traces-that-tell-the-whole-story
 Repo: https://github.com/stayrelevantid/otel-shop
 
 #OpenTelemetry #Golang #Kubernetes #Observability #DevOps #DistributedTracing #Jaeger #PostgreSQL #Microservices #CloudNative
