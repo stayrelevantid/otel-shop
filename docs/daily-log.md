@@ -176,3 +176,35 @@ Status fase: [progress-tracker.md](progress-tracker.md)
 - Query Jaeger `limit=1` kena spam trace `/health` dari probe → filter `operation=POST /checkout`
 
 **Next:** F9 DB instrumentation (otelsql) → F10 manual spans (validate/check/process) → F11 attributes/events/baggage.
+
+---
+
+### Day 6 — 2026-08-31 (DB Spans, Manual Spans & Baggage)
+
+**Tujuan:** Trace makin kaya: DB span, 3 manual business spans, attributes/events/status, dan baggage `order.id` lintas service.
+
+**Selesai (F9):**
+- `db.Open` → `otelsql.Open("pgx", ...)` + attr `db.system=postgresql` (dep `XSAM/otelsql` v0.43.0)
+- DB spans muncul: `sql.conn.query`, `sql.rows`, `sql.conn.reset_session` di bawah `GET /inventory/{id}`
+
+**Selesai (F10):**
+- Manual spans di checkout: `validate-order` (order.item_id, order.quantity), `check-inventory` (product.id, product.stock), `process-payment` (payment.order_id, payment.amount, payment.status)
+
+**Selesai (F11):**
+- 11.2/11.3: attrs `product.*` di inventory, `payment.*` di payment handler (server span)
+- 11.4: events `payment_started` / `payment_completed` / `payment_failed`
+- 11.5: payment chaos error → span status ERROR + RecordError (event exception terlihat)
+- 11.6 🧠: baggage `order.id` di-set Order sejak awal flow → terbaca di inventory & payment (`baggage.order.id`)
+- 11.7: downstream gagal → parent `POST /checkout` span ikut ERROR
+
+**Metrik/Verifikasi:**
+- build+vet+fmt+test hijau semua module
+- Deploy + `test.sh`: 9 passed
+- Jaeger (traceID `54a6c09c...`): manual spans + attrs + events + baggage + DB spans lengkap
+- Chaos 100% (traceID `54c7f43b...`): `POST /pay` & `process-payment` & parent checkout error=True, events payment_failed; revert → paid ✓
+
+**Kendala & Solusi:**
+- Setelah build+apply, pods tidak otomatis pakai image baru (manifest tak berubah) → `kubectl rollout restart` ketiga deployment
+- Parser tag Jaeger: `value` bisa object typed atau plain string → normalisasi di script verifikasi
+
+**Next:** F12 lengkapi quality scripts (`check.sh` coverage gate, `chaos-test.sh`) → F13 integration & E2E tests → F14 docs (tracing-examples, experiments).
