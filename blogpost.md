@@ -1,68 +1,66 @@
-# blogpost.md — Day 6
+# blogpost.md — Day 7
 
 ---
 
 ## Section 1 — Blog Post
 
 ### Post Title
-Day 6 OTel-Shop: Traces That Tell the Whole Story
+Day 7 OTel-Shop: Quality Gates, Docs, and Done
 
 ### Slug
-day-6-otel-shop-traces-that-tell-the-whole-story
+day-7-otel-shop-quality-gates-docs-and-done
 
 ### URL
-http://stayrelevant.id/blog/day-6-otel-shop-traces-that-tell-the-whole-story
+http://stayrelevant.id/blog/day-7-otel-shop-quality-gates-docs-and-done
 
 ### Excerpt (Meta Description)
-Day 6 of OTel-Shop: database spans, manual business spans, rich attributes, payment events, and baggage carrying the order id across every service.
+Day 7 of OTel-Shop, the finale: a full quality pipeline, integration tests, real documentation, and the final DoD gate — all 15 checks passed.
 
 ### Tags
 otel-shop, golang, open-telemetry, distributed-tracing, observability, kubernetes, k3d, jaeger, postgresql, microservices, devops, cloud-native
 
 ### Cover Image Prompt
-Flat vector illustration, wide 16:9 tech blog cover banner, a large magnifying glass hovering over a monitor showing a tracing waterfall chart, but the bars under the glass reveal extra detail: tiny child bars branching off (a database cylinder symbol, three small step icons in a row) and floating label bubbles with a tag icon and a small id badge, a bank card block at the side emitting small confetti dots for events, clean minimal style, dark navy background with teal and orange accent colors, subtle isometric grid faded in the background suggesting Kubernetes, no text, crisp smooth shapes, JPG output compressed under 100KB.
+Flat vector illustration, wide 16:9 tech blog cover banner, a checkered finish-line banner held up between two poles, three rounded service blocks (shopping cart, database cylinder, bank card) crossing the line side by side with small motion lines, behind them a monitor showing a tracing waterfall chart, above floats a row of green check mark badges and a bar chart with all bars filled solid green, clean minimal style, dark navy background with teal and orange accent colors, subtle isometric grid faded in the background suggesting Kubernetes, no text, crisp smooth shapes, JPG output compressed under 100KB.
 
 ### Content
 
 ## Where We Left Off
 
-Day 5 delivered the first distributed trace: one trace id spanning all three services. Amazing — but honest review time. Every span had a generic name, the waterfall showed "an HTTP call happened," and that was it. If a checkout were slow, the trace still couldn't say whether validation, the database, or payment was the culprit. The trace knew the route; it didn't know the story.
+Day 6 finished the tracing story: business spans, database spans, attributes, events, and baggage — the waterfall read like the checkout procedure itself. The lab was feature-complete but messy around the edges: verification meant typing commands from memory, documentation was scattered, and nothing proved the project actually met its own acceptance criteria. Day 7 was the finish line: quality gates, real tests, real docs, and a final checklist.
 
-## What Got Added Today
+## What Got Built Today
 
-Three enrichment layers, all landing in the same waterfall.
+**One command to judge everything.** A `check.sh` script now runs the full quality pipeline across every module: formatting check (fails if anything is unformatted), static vetting, the linter, all tests, and a coverage gate that refuses anything below 70% per package. Result: all green, with coverage sitting between 82% and 97%.
 
-**The business story, as spans.** Checkout now explicitly starts three named spans around its steps: `validate-order`, `check-inventory`, and `process-payment`. Each carries its own attributes — item id and quantity on validation, product id and resulting stock on the inventory check, order id, amount, and final status on payment. Reading the waterfall top to bottom now reads like the checkout procedure itself.
+**Breaking things on schedule.** A `chaos-test.sh` script flips the payment chaos knobs against the real cluster and makes two promises: forced errors must actually fail the checkout, and a 100% delay must actually take about two seconds (measured: 2034ms). Then it reverts everything. Broken-on-demand is now reproducible with one command.
 
-**The database finally speaks.** Inventory's connection pool is now opened through `otelsql`, a drop-in wrapper for `database/sql`. Zero query changes — the same `SELECT stock FROM products WHERE id = $1` — yet every query emits spans: you can literally see `sql.conn.query` and `sql.rows` nested under the inventory request, with `db.system=postgresql` attached.
+**A test that exercises the real wiring.** Unit tests mock the neighbors; the new integration test does the opposite — it uses the *real* checkout handler with the *real* HTTP clients, pointed at fake downstream servers. Three scenarios: the happy path, a missing product (fails honestly with 500), and insufficient stock (400). If the wiring ever breaks, this catches it.
 
-**Metadata everywhere.**
-- The payment span now records events as they happen: `payment_started`, then `payment_completed` (or `payment_failed`). A timeline inside a span.
-- When chaos forces a failure, spans are marked with error status and the exception is recorded — the parent checkout span too, so the very first bar you see turns red.
-- And the small but delightful one: **baggage**. The order id is now created at the very start of checkout and attached to the request context. OpenTelemetry's propagators carry it inside HTTP headers automatically, and both inventory and payment read it back and stamp it onto their spans. One id, visible everywhere, zero extra HTTP calls.
+**Docs that explain, not just describe.** Two new documents: one showing what traces look like in the three canonical situations (normal, slow, failing), and one walking through six core observability experiments — from turning propagation off to dialing sampling down to 10%. Plus a README that finally matches reality: architecture, ports, quickstart, teardown.
 
-## What It Looks Like
+## The DoD Gate
 
-Real output from one checkout request:
+The PRD defined fifteen "definition of done" checks, and the last day's job was to actually run them — including the ones nobody had tested live before:
 
-- Order: `POST /checkout` → `validate-order` → `check-inventory` → `process-payment`, each with its attributes.
-- Inventory: `GET /inventory/{id}` stamped with `baggage.order.id=O-a921116e` and `product.stock=10`, with the actual database query nested beneath it.
-- Payment: `POST /pay` with the same baggage id, `payment.amount`, status, and the two lifecycle events.
+- **Sampling at 10%.** Set the sampler env to 0.1, fired 20 checkouts, counted traces: 3 showed up (~15%, within expectations). Proof that sampling controls volume while traces that survive stay complete.
+- **Collector down.** Scaled the telemetry collector to zero replicas — the component that receives every trace — and fired checkouts: all 200 OK. Telemetry must never hold the business hostage; when the collector came back, traces resumed flowing.
 
-And the failure path, verified by flipping the chaos knob to 100%: the payment span turns error-red with a `payment_failed` event, the order-side payment span and the parent checkout span light up red too. Failure propagates visibly up the whole chain — exactly what you want at 3am.
+Plus the familiar ones re-verified end to end: single trace across all three services, database spans, manual spans, attributes, events, baggage, chaos behavior, full test suite, and a rebuild-from-clean loop.
+
+All fifteen: passed. The project's own acceptance criteria, executed rather than assumed.
 
 ## Lessons Learned
 
-- **Auto-instrumentation gets you 80%; business spans get you meaning.** `otelsql` and `otelhttp` required almost no code, but only the hand-named spans (`check-inventory`) map to what the business actually does.
-- **Baggage is a write-once, read-everywhere channel.** Set a value once at the entry point, and every downstream service can read it — perfect for correlation ids like `order.id`. (It's not for bulk data, just small metadata.)
-- **Events make spans self-documenting.** A timeline of `payment_started` → `payment_failed` inside one span tells the story without needing a second trace.
-- **Fail loudly, at every level.** Marking the child span, the client call, and the parent checkout span as errors means nobody has to dig to notice a broken flow.
+- **A gate beats a habit.** Coverage above 70% was an intention for six days; it became a fact in one afternoon once a script refused anything less.
+- **Deterministic chaos is the whole trick.** The chaos knobs pass at 0% and 100% and only get random in between — that's why they can be tested by a script with assertions.
+- **Unit tests catch logic; integration tests catch wiring.** Mocks verified the rules; the real-handler-real-clients test verified the pipes between them. You need both.
+- **Write the docs for the person you were on Day 1.** Every confusing term deserves a plain-words explanation — the repo now even ships a glossary that explains spans, baggage, NodePorts and friends like you're five.
 
 ## Conclusion
 
-With Day 6, the tracing story is complete: routes, business steps, database queries, attributes, events, and shared context all live in one waterfall. The lab now demonstrates the full OpenTelemetry surface that real production systems rely on.
+Seven days, from an empty folder to a small but complete microservices lab: three Go services in Kubernetes, a real checkout flow, honest failures, full OpenTelemetry instrumentation, chaos knobs, quality gates, and documentation that teaches. Every claim in this series ends with the same receipt: it's in the repo, and the checks say it's true.
 
-What's left is polish: a proper quality script with the coverage gate, integration tests, a chaos-test script, and the documentation that ties the whole experiment together.
+The lab is done. What a ride.
 
 Repo is here: https://github.com/stayrelevantid/otel-shop
 
@@ -71,19 +69,18 @@ Repo is here: https://github.com/stayrelevantid/otel-shop
 ## Section 2 — LinkedIn Post
 
 **Hook**
-Day 6 of the OTel-Shop challenge: our traces learned to tell the whole story 📖
+Day 7 of the OTel-Shop challenge — the finale: quality gates, docs, and a clean DoD pass. The lab is done 🏁
 
 **Today's wins:**
-• Manual business spans: `validate-order` → `check-inventory` → `process-payment`, each with its own attributes
-• Database spans via otelsql — the actual Postgres query now appears nested under the inventory request
-• Baggage: the order id is set once at checkout and read back by both downstream services, zero extra calls
-• Payment span events (`payment_started` → `payment_completed`) and loud error status when chaos strikes — parent span turns red too
+• `check.sh`: one command for fmt + vet + lint + tests + coverage gate — all green (82–97%)
+• `chaos-test.sh`: forced errors and a measured 2-second delay, asserted and reverted automatically
+• Integration test with the real handler and real HTTP clients against fake downstreams
+• DoD gate: 15/15 checks passed — including live proof that sampling 10% keeps ~1 in 10 traces, and that killing the telemetry collector never breaks checkout
 
-The waterfall now reads like the checkout procedure itself. One trace = the full story.
+Seven days: cluster up → services talking → first distributed trace → chaos + tests → rich spans → quality gates. Every claim has a receipt in the repo.
 
-Next: quality scripts (coverage gate + chaos test), integration tests, and documentation to wrap up the lab.
+Bonus: the repo now includes a plain-words glossary explaining every confusing term (spans, baggage, NodePorts...) — the doc I wish I had on Day 1.
 
-Blog: http://stayrelevant.id/blog/day-6-otel-shop-traces-that-tell-the-whole-story
 Repo: https://github.com/stayrelevantid/otel-shop
 
 #OpenTelemetry #Golang #Kubernetes #Observability #DevOps #DistributedTracing #Jaeger #PostgreSQL #Microservices #CloudNative

@@ -107,6 +107,7 @@ Buka `http://localhost:16686` → service `order-service` → operation
 - [Progress Tracker](docs/progress-tracker.md) · [Daily Log](docs/daily-log.md)
 - [Contoh Trace](docs/tracing-examples.md) — normal / slow / error
 - [Eksperimen](docs/experiments.md) — 6 eksperimen inti observability
+- [Glosarium](docs/glossary.md) — kamus istilah untuk pemula (ELI5)
 
 ## Teardown
 
