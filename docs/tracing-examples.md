@@ -1,17 +1,16 @@
-# Contoh Trace — OTel-Shop Lab
+# Trace Examples / Contoh Trace — OTel-Shop Lab
 
-Referensi membandingkan hasil di Jaeger (`http://localhost:16686`) dengan
-bentuk waterfall yang diharapkan (PRD §46). Filter: service `order-service`,
-operation `POST /checkout` (trace `/health` dari probe akan membanjiri daftar).
+**🇬🇧 EN** — Reference for comparing what you see in Jaeger (`http://localhost:16686`) with the expected waterfall shapes (PRD §46). Filter: service `order-service`, operation `POST /checkout` (probe `/health` traces will flood the list otherwise).
+
+**🇮🇩 ID** — Referensi membandingkan hasil di Jaeger (`http://localhost:16686`) dengan bentuk waterfall yang diharapkan (PRD §46). Filter: service `order-service`, operation `POST /checkout` (trace `/health` dari probe akan membanjiri daftar).
 
 ---
 
-## 1. Checkout Normal
+## 1. Normal Checkout / Checkout Normal
 
-Skenario: `POST /checkout {"item_id":"A123","qty":1}` dengan chaos default
-(delay 20%, error 10%) — asumsikan chaos tidak ke-trigger.
+**🇬🇧 EN — Scenario:** `POST /checkout {"item_id":"A123","qty":1}` with default chaos (delay 20%, error 10%) — assuming chaos does not trigger.
 
-**Struktur yang diharapkan:**
+**Expected structure / Struktur yang diharapkan:**
 
 ```
 order-service        POST /checkout           (parent, ~10-30ms)
@@ -26,37 +25,32 @@ order-service        POST /checkout           (parent, ~10-30ms)
       └─ payment-service POST /pay            events: payment_started → payment_completed
 ```
 
-**Ciri:** semua span status normal (tidak ada `error=true`), satu trace ID
-berisi 3 service, `baggage.order.id` sama di inventory & payment.
+**🇬🇧 EN — Markers:** all spans normal (no `error=true`), one trace ID holds 3 services, same `baggage.order.id` in inventory & payment.
+
+**🇮🇩 ID — Skenario:** `POST /checkout` dengan chaos default — asumsikan chaos tidak ke-trigger.
+
+**🇮🇩 ID — Ciri:** semua span normal (tidak ada `error=true`), satu trace ID berisi 3 service, `baggage.order.id` sama di inventory & payment.
 
 ---
 
-## 2. Checkout Lambat (Chaos Delay)
+## 2. Slow Checkout (Chaos Delay) / Checkout Lambat (Chaos Delay)
 
-Skenario: `PAYMENT_DELAY_PERCENT=100` + `PAYMENT_DELAY_MS=2000`
-(atau pakai `./scripts/chaos-test.sh` scenario 2).
+**🇬🇧 EN — Scenario:** `PAYMENT_DELAY_PERCENT=100` + `PAYMENT_DELAY_MS=2000` (or use scenario 2 of `./scripts/chaos-test.sh`).
 
-**Ciri:**
-- `POST /pay` di payment-service stretch ~2000ms.
-- `HTTP POST` (client span order) dan `process-payment` juga memanjang
-  (mengapit child).
-- Parent `POST /checkout` total ≈ durasi delay + sisanya.
+**🇬🇧 EN — Markers:** `POST /pay` stretches to ~2000ms; the order-side `HTTP POST` and `process-payment` spans stretch to wrap it; parent `POST /checkout` total ≈ delay + rest. Analysis: the bottleneck hop is visible instantly — no logging or profiling needed.
 
-**Analisis yang bisa dilakukan:** instant terlihat bottleneck ada di hop
-payment, bukan di inventory atau DB — tanpa perlu logging atau profiling.
+**🇮🇩 ID — Skenario:** `PAYMENT_DELAY_PERCENT=100` + `PAYMENT_DELAY_MS=2000` (atau scenario 2 `chaos-test.sh`).
+
+**🇮🇩 ID — Ciri:** `POST /pay` stretch ~2000ms; span `HTTP POST` (order) dan `process-payment` ikut memanjang; parent total ≈ delay + sisanya. Analisis: bottleneck terlihat instan di hop payment, bukan di inventory/DB.
 
 ---
 
-## 3. Error Chain (Chaos Error)
+## 3. Error Chain (Chaos Error) / Rantai Error (Chaos Error)
 
-Skenario: `PAYMENT_ERROR_PERCENT=100` (chaos-test.sh scenario 1).
+**🇬🇧 EN — Scenario:** `PAYMENT_ERROR_PERCENT=100` (chaos-test.sh scenario 1).
 
-**Ciri:**
-- `POST /pay` → status **ERROR**, event `payment_failed`, exception record.
-- `HTTP POST` di order → status ERROR.
-- `process-payment` → status ERROR + `payment.status=failed`.
-- Parent `POST /checkout` → ikut **ERROR** (F11.7).
+**🇬🇧 EN — Markers:** `POST /pay` → status **ERROR** with `payment_failed` event + recorded exception; `HTTP POST` in order → ERROR; `process-payment` → ERROR + `payment.status=failed`; parent `POST /checkout` → also **ERROR** (F11.7). Client response: `{"error":"payment failed"}` (500). The failure chain is traceable from child to root in one trace — no manual log correlation.
 
-Response body client: `{"error":"payment failed"}` (500). Error chain bisa
-ditelusuri dari child sampai root dalam satu trace — tanpa correlation log
-manual.
+**🇮🇩 ID — Skenario:** `PAYMENT_ERROR_PERCENT=100` (scenario 1 chaos-test.sh).
+
+**🇮🇩 ID — Ciri:** `POST /pay` → status **ERROR**, event `payment_failed`, exception record; `HTTP POST` di order → ERROR; `process-payment` → ERROR + `payment.status=failed`; parent `POST /checkout` → ikut **ERROR** (F11.7). Response: 500 `{"error":"payment failed"}`. Rantai error bisa ditelusuri child → root dalam satu trace — tanpa correlation log manual.
