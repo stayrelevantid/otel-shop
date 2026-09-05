@@ -21,10 +21,10 @@ Mengacu pada `implementation_plan.md` (v2). Update setelah setiap fase selesai.
 | F9 | Database Instrumentation | ✅ Done | 2026-08-31 | otelsql + pgx; DB spans (sql.conn.query/rows) child di inventory |
 | F10 | Manual Instrumentation (custom spans) | ✅ Done | 2026-08-31 | validate-order / check-inventory / process-payment + attrs |
 | F11 | Attributes, Events, Baggage | ✅ Done | 2026-08-31 | attrs handlers, payment events, ERROR status, baggage order.id lintas service |
-| F12 | Scripts & Quality Pipeline | 🟡 Partial | 2026-08-28 | test.sh E2E ada; check/build/chaos belum |
-| F13 | Integration & E2E Testing | ⏳ Pending | — | — |
-| F14 | Documentation | ⏳ Pending | — | tracing-examples, experiments, README |
-| F15 | DoD Verification | ⏳ Pending | — | Gate akhir |
+| F12 | Scripts & Quality Pipeline | ✅ Done | 2026-09-05 | check.sh (fmt/vet/lint/test + coverage gate), chaos-test.sh; build/deploy/test sudah ada |
+| F13 | Integration & E2E Testing | ✅ Done | 2026-09-05 | integration test full-stack (httptest downstreams) + test.sh + chaos-test.sh |
+| F14 | Documentation | ✅ Done | 2026-09-05 | tracing-examples, experiments (6 eksperimen), README final |
+| F15 | DoD Verification | ✅ Done | 2026-09-05 | 15 checklist PRD §45 lulus — sampling 0.1 (3/20), collector-down (checkout tetap 200), coverage 82–97%, trace lengkap |
 
 Legend: ✅ Done · 🟡 Partial · ⏳ Pending
 

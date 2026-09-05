@@ -208,3 +208,35 @@ Status fase: [progress-tracker.md](progress-tracker.md)
 - Parser tag Jaeger: `value` bisa object typed atau plain string → normalisasi di script verifikasi
 
 **Next:** F12 lengkapi quality scripts (`check.sh` coverage gate, `chaos-test.sh`) → F13 integration & E2E tests → F14 docs (tracing-examples, experiments).
+
+---
+
+### Day 7 — 2026-09-05 (Finish Line: Quality, Tests, Docs & DoD)
+
+**Tujuan:** Menutup project — F12+F13+F14+F15 sekaligus, DoD PRD §45 lulus semua.
+
+**Selesai (F12):**
+- `scripts/check.sh`: gofmt (fail jika dirty) + `go vet` + golangci-lint + `go test` + **coverage gate ≥70%** per package `./internal/...` (parse min coverage)
+- `scripts/chaos-test.sh`: scenario forced error 100% (500) + delay 100% (~2s terukur) + revert default; exit non-zero bila gagal
+
+**Selesai (F13):**
+- `checkout_integration_test.go`: `CheckoutHandler` asli + HTTP client asli → httptest downstreams (sukses / not found → 500 / insufficient → 400)
+
+**Selesai (F14):**
+- `docs/tracing-examples.md`: 3 skenario PRD §46 (normal / slow / error chain) dengan struktur waterfall
+- `docs/experiments.md`: 6 eksperimen PRD §43 — langkah + hasil yang diharapkan + pelajaran
+- README final: arsitektur, struktur repo, prerequisites, tabel port, quickstart, env config, teardown
+
+**Metrik/Verifikasi (DoD PRD §45 — 15/15 lulus):**
+- `check.sh`: **ALL CHECKS PASSED** (coverage 82.1–96.7%)
+- `chaos-test.sh`: **PASSED** (delay terukur 2034ms)
+- `test.sh`: 9 passed
+- Sampling 0.1: 20 checkout → hanya 3 trace baru (~15%, sesuai ekspektasi)
+- Collector down (replicas=0): 3× checkout tetap **200** — telemetry fail-open (D10); naik lagi → trace mengalir
+- Trace enrichment lengkap: DB span, manual spans, attrs, events, baggage, ERROR status (Day 6)
+- Integration + E2E + chaos scripts lulus; rebuild-from-repo berjalan via `build.sh`+`deploy.sh`
+
+**Kendala & Solusi:**
+- Tidak ada besar — semua script lulus di run pertama/t kedua
+
+**Status: PROJECT DONE** — 15/15 fase implementation_plan.md selesai. Sisa opsional: publikasi blog harian, CI runner (di luar PRD).
